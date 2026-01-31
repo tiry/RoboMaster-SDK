@@ -1,11 +1,11 @@
 #ifndef __RM_MEDIA_CODEC_H__
 #define __RM_MEDIA_CODEC_H__
 
-
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
 #include <libavutil/mem.h>
+#include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 }
 
@@ -13,6 +13,7 @@ extern "C" {
 #include <stdio.h>
 #include <stdexcept>
 #include <string>
+#include <cstdint>
 #include <cstdlib>
 #include <utility>
 #include <opus/opus.h>
@@ -24,19 +25,6 @@ extern "C" {
 
 #ifndef PIX_FMT_RGB24
 #define PIX_FMT_RGB24 AV_PIX_FMT_RGB24
-#endif
-
-#ifndef CODEC_CAP_TRUNCATED
-#define CODEC_CAP_TRUNCATED AV_CODEC_CAP_TRUNCATED
-#endif
-
-#ifndef CODEC_FLAG_TRUNCATED
-#define CODEC_FLAG_TRUNCATED AV_CODEC_FLAG_TRUNCATED
-#endif
-
-#if (LIBAVCODEC_VERSION_MAJOR <= 54)
-#  define av_frame_alloc avcodec_alloc_frame
-#  define av_frame_free  avcodec_free_frame
 #endif
 
 using ubyte = unsigned char;
@@ -52,13 +40,13 @@ class H264Decoder {
 private:
     AVCodecContext        *context;
     AVFrame               *frame;
-    AVCodec               *codec;
+    const AVCodec         *codec;
     AVCodecParserContext  *parser;
     AVPacket              *pkt;
 
 public:
     H264Decoder() {
-        avcodec_register_all();
+        // avcodec_register_all() removed in FFmpeg 4.0 - codecs are auto-registered
 
         codec = avcodec_find_decoder(AV_CODEC_ID_H264);
         if (!codec)
@@ -68,9 +56,8 @@ public:
         if (!context)
             throw CodecException("H264Decoder: avcodec_alloc_context3 failed!");
 
-        if(codec->capabilities & CODEC_CAP_TRUNCATED) {
-            context->flags |= CODEC_FLAG_TRUNCATED;
-        }
+        // CODEC_CAP_TRUNCATED/CODEC_FLAG_TRUNCATED removed in FFmpeg 5.x
+        // Modern FFmpeg handles truncated frames differently
 
         int err = avcodec_open2(context, codec, nullptr);
         if (err < 0)
@@ -84,18 +71,17 @@ public:
         if (!frame)
             throw CodecException("H264Decoder: av_frame_alloc failed!");
 
-        pkt = new AVPacket;
+        // av_init_packet() deprecated - use av_packet_alloc()
+        pkt = av_packet_alloc();
         if (!pkt)
-            throw CodecException("H264Decoder: alloc AVPacket failed!");
-        av_init_packet(pkt);
+            throw CodecException("H264Decoder: av_packet_alloc failed!");
     }
 
     ~H264Decoder() {
         av_parser_close(parser);
-        avcodec_close(context);
-        av_free(context);
+        avcodec_free_context(&context);
         av_frame_free(&frame);
-        delete pkt;
+        av_packet_free(&pkt);
     }
 
     ssize_t parse(const unsigned char* in_data, ssize_t in_size) {
@@ -110,10 +96,15 @@ public:
     }
 
     const AVFrame& decode_frame() {
-        int got_picture = 0;
-        int nread = avcodec_decode_video2(context, frame, &got_picture, pkt);
-        if (nread < 0 || got_picture == 0)
-            throw CodecException("H264Decoder: decode_frame, avcodec_decode_video2 failed!");
+        // avcodec_decode_video2() removed - use send/receive API
+        int ret = avcodec_send_packet(context, pkt);
+        if (ret < 0)
+            throw CodecException("H264Decoder: decode_frame, avcodec_send_packet failed!");
+
+        ret = avcodec_receive_frame(context, frame);
+        if (ret < 0)
+            throw CodecException("H264Decoder: decode_frame, avcodec_receive_frame failed!");
+
         return *frame;
     }
 };
@@ -140,7 +131,9 @@ public:
     }
 
     int predict_size(int w, int h) {
-        return avpicture_fill((AVPicture*)output_frame_, nullptr, output_format_, w, h);
+        // avpicture_fill() removed - use av_image_fill_arrays()
+        return av_image_fill_arrays(output_frame_->data, output_frame_->linesize,
+                                    nullptr, output_format_, w, h, 1);
     }
 
     const AVFrame& convert(const AVFrame &frame, unsigned char* out_bgr) {
@@ -154,7 +147,9 @@ public:
         if (!context_)
             throw CodecException("FormatConverter: convert, sws_getCachedContext failed!");
 
-        avpicture_fill((AVPicture*)output_frame_, out_bgr, output_format_, w, h);
+        // avpicture_fill() removed - use av_image_fill_arrays()
+        av_image_fill_arrays(output_frame_->data, output_frame_->linesize,
+                            out_bgr, output_format_, w, h, 1);
 
         sws_scale(context_, frame.data, frame.linesize, 0, h,
                   output_frame_->data, output_frame_->linesize);
