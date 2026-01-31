@@ -221,7 +221,7 @@ public:
 
     ~PyH264Decoder() = default;
 
-    py::list decode(const py::str &input) {
+    py::list decode(const py::bytes &input) {
         ssize_t len = PYBIND11_BYTES_SIZE(input.ptr());
         const ubyte* data_in = (const ubyte*)(PYBIND11_BYTES_AS_STRING(input.ptr()));
 
