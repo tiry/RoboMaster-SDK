@@ -32,6 +32,7 @@ This fork updates the SDK to work with:
 | `avcodec_close()` | `avcodec_free_context()` | avcodec_close deprecated |
 | `AVCodec *codec` | `const AVCodec *codec` | Return type changed |
 | `CODEC_CAP_TRUNCATED` / `CODEC_FLAG_TRUNCATED` | Removed | Flags removed in FFmpeg 5.x |
+| `py::str` in decode() | `py::bytes` | Python 3 passes bytes for video data |
 
 ### `lib/libmedia_codec/CMakeLists.txt`
 
