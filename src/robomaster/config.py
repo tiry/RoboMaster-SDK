@@ -25,6 +25,8 @@ LOCAL_IP_STR = None
 ROBOT_IP_STR = None
 # 设置连接方式 "tcp" or "udp" 示例：DEFAULT_PROTO_TYPE = "tcp"
 DEFAULT_PROTO_TYPE = "udp"
+# Alias for backwards compatibility (client.py uses this name)
+DEFAULT_CONN_PROTO = DEFAULT_PROTO_TYPE
 
 
 class Config:
